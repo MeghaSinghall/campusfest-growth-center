@@ -8,7 +8,7 @@
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | Three-slide strategy PDF | [`deliverables/RISA_Growth_APM_Sponsorship_Strategy.pdf`](deliverables/RISA_Growth_APM_Sponsorship_Strategy.pdf) (source: `deliverables/slides.html`) |
-| 2 | Working product: analytics dashboard, campaign and task manager, embedded AI analyst | Live link: `<add your Render URL here>` · code in [`app/`](app/) |
+| 2 | Working product: analytics dashboard, campaign and task manager, embedded AI analyst | Live link: **https://campusfest-growth-center-nmt1.onrender.com** · code in [`app/`](app/) |
 | 3 | README: research, assumptions, calculations, data sources, framework, setup, tools, testing, limitations | This file |
 
 ---
@@ -218,6 +218,9 @@ npm run dev
 ```
 
 ## 11. Deploy on Render
+
+**Live:** https://campusfest-growth-center-nmt1.onrender.com (free plan: the first load after idling takes ~30–60 s)
+
 
 The repo includes a [`render.yaml`](render.yaml) Blueprint that creates **both** a free PostgreSQL database and the web service, and wires them together.
 
