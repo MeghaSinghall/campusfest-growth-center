@@ -1,0 +1,33 @@
+# Render Blueprint: one free PostgreSQL database + one Node web service.
+# Render → New → Blueprint → pick this repo → Apply. You'll be asked for GROQ_API_KEY.
+databases:
+  - name: campusfest-db
+    plan: free
+    databaseName: campusfest
+    user: campusfest
+
+services:
+  - type: web
+    name: campusfest-growth-center
+    runtime: node
+    plan: free
+    rootDir: app
+    buildCommand: npm ci --include=dev && npm run build
+    # Seeds the original RISA dataset only when the database is empty, so edits survive restarts
+    startCommand: npm run db:init && npm run start
+    healthCheckPath: /api/settings
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: campusfest-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: "20"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_FALLBACK_MODELS
+        value: llama-3.3-70b-versatile,openai/gpt-oss-20b
