@@ -113,7 +113,7 @@ export default function Copilot({ onClose, seedPrompt }: { onClose: () => void; 
             )}
           </div>
         ))}
-        {busy && <div className="meta">Reading the desk</div>}
+        {busy && <Thinking />}
         <div ref={end} />
       </div>
       <form className="border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); send(input); }}>
@@ -123,5 +123,24 @@ export default function Copilot({ onClose, seedPrompt }: { onClose: () => void; 
         </div>
       </form>
     </aside>
+  );
+}
+
+const STEPS = ["Thinking", "Reading the question", "Pulling the snapshot", "Checking the pipeline", "Querying the database", "Crunching the numbers", "Cross-checking figures", "Writing the answer"];
+function Thinking() {
+  const [t, setT] = useState(0);
+  useEffect(() => { const id = setInterval(() => setT((x) => x + 1), 1000); return () => clearInterval(id); }, []);
+  const i = Math.min(Math.floor(t / 2), STEPS.length - 1);
+  return (
+    <div className="rounded-xl border border-line bg-bg p-3" aria-live="polite">
+      <div className="flex items-center gap-2 text-[13px] text-fg">
+        <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--accent)]" /></span>
+        <span key={i} className="font-medium">{STEPS[i]}…</span>
+        <span className="ml-auto meta tabular-nums">{t}s</span>
+      </div>
+      <ul className="mt-2 space-y-1 border-l border-line pl-3">
+        {STEPS.slice(0, i).slice(-3).map((s) => <li key={s} className="meta">✓ {s}</li>)}
+      </ul>
+    </div>
   );
 }

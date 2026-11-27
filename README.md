@@ -122,7 +122,7 @@ The win-rate and cost thresholds are live settings in the app (*Assumptions and 
 
 ## 7. The product
 
-**Stack:** Next.js 15 (React 19, Tailwind 4, Recharts) · PostgreSQL · an LLM through Groq's free API. All UI controls are hand-built: select, date picker, donut charts, drag and drop.
+**Stack:** Next.js 15 (React 19, Tailwind 4, Recharts) · PostgreSQL · an LLM through NVIDIA's free NIM API (build.nvidia.com). All UI controls are hand-built: select, date picker, donut charts, drag and drop.
 
 | Brief requirement | Where it lives |
 |---|---|
@@ -170,7 +170,7 @@ A panel on every page. It is not a decorative chatbot: every answer is computed 
 
 **Writes:** moving O055 to confirmed (₹60k) and logging ₹30k raised the 20 Apr snapshot to 25 deals, ₹23.0L and ₹30k cash, while 19 Apr stayed unchanged. Due dates round-trip exactly.
 
-**AI analyst test log** (Groq free tier, as of 20 Apr 2025):
+**AI analyst test log** (as of 20 Apr 2025; recorded on an earlier model, the tools and prompts are unchanged):
 
 | Test type | Question | Result |
 |---|---|---|
@@ -185,7 +185,7 @@ The data was reset to the original dataset after testing.
 
 ## 10. Setup: run it locally
 
-Prerequisites: Node 20+, PostgreSQL 14+, and a free Groq API key from https://console.groq.com/keys (no card needed).
+Prerequisites: Node 20+, PostgreSQL 14+, and a free NVIDIA API key from https://build.nvidia.com.
 
 ```bash
 cd app
@@ -197,12 +197,9 @@ Create `app/.env.local`:
 
 ```
 DATABASE_URL=postgres://localhost/campusfest
-LLM_PROVIDER=groq
-GROQ_API_KEY=gsk_your_key
-GROQ_MODEL=openai/gpt-oss-120b
-GROQ_FALLBACK_MODELS=llama-3.3-70b-versatile,openai/gpt-oss-20b
-# Alternatives: LLM_PROVIDER=openrouter (OPENROUTER_API_KEY),
-# mistral (MISTRAL_API_KEY) or gemini (GEMINI_API_KEY, GEMINI_MODEL)
+NVIDIA_API_KEY=nvapi-your_key
+NVIDIA_MODEL=nvidia/nemotron-3.5-super-vl-120b-a12b
+NVIDIA_FALLBACK_MODELS=nvidia/nemotron-3.5-lightning-30b-a3b,mistralai/mistral-large-4-1t-a52b
 ```
 
 Load the original dataset (rerun at any time to reset):
@@ -228,7 +225,7 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint that creates **both**
 2. In Render: **New → Blueprint**, pick the repository, and click **Apply**. Render creates:
    - `campusfest-db`, a free PostgreSQL database
    - `campusfest-growth-center`, a Node web service in `app/`, with `DATABASE_URL` linked to the database automatically
-3. When asked, paste your `GROQ_API_KEY` (it is marked `sync: false`, so it never lives in the repo).
+3. When asked, paste your `NVIDIA_API_KEY` (it is marked `sync: false`, so it never lives in the repo).
 4. On first start the service runs `npm run db:init`, which loads the original dataset into the empty database. Later restarts skip seeding, so the team's edits survive.
 
 | Setting | Value |
@@ -236,7 +233,7 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint that creates **both**
 | Root directory | `app` |
 | Build command | `npm ci --include=dev && npm run build` |
 | Start command | `npm run db:init && npm run start` |
-| Environment | `DATABASE_URL` (from the database), `GROQ_API_KEY`, `LLM_PROVIDER=groq`, `NODE_VERSION=20` |
+| Environment | `DATABASE_URL` (from the database), `NVIDIA_API_KEY`, `NODE_VERSION=20` |
 
 To restore the original data on Render, open the service **Shell** and run `npm run db:reset`.
 
@@ -249,7 +246,7 @@ Free-plan caveats: the web service sleeps after 15 minutes idle (the first reque
 | Claude Code (Anthropic) | paid | Pair-built the code, data pipeline, deck and README, under my direction and review |
 | Next.js 15, React 19, Tailwind 4, Recharts, lucide-react, react-markdown | open source | App framework, charts, icons, chat rendering |
 | PostgreSQL 16 (`pg` driver) | open source | Persistent store |
-| **Groq API** (`openai/gpt-oss-120b`, falls back to `llama-3.3-70b-versatile` and `openai/gpt-oss-20b`) | free tier | AI analyst. OpenRouter, Mistral and Google Gemini can be swapped in through `LLM_PROVIDER` |
+| **NVIDIA NIM API** (`nvidia/nemotron-3.5-super-vl-120b-a12b`, falls back to `nvidia/nemotron-3.5-lightning-30b-a3b` and `mistralai/mistral-large-4-1t-a52b`) | free tier | AI analyst |
 | [unslop](https://github.com/heydamir/unslop) skill by Damir Sokolovsky (CC BY 4.0) | free | Design direction: quiet chrome, colour only in the moments, one signature detail (ticket-stub perforation on commitments) |
 | pandas, openpyxl | open source | Profiling and independently checking the dataset |
 | Headless Chrome | free | Rendering the slides to PDF |

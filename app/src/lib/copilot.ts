@@ -1,8 +1,8 @@
-/* Embedded AI Growth Analyst — Gemini with function calling over the LIVE database.
+/* Embedded AI Growth Analyst — NVIDIA NIM (OpenAI-compatible) with function calling over the LIVE database.
  * The model never sees a hardcoded data dump: every number comes from a tool call against current Postgres state,
  * computed by the same metrics engine as the dashboard. Writes are only *proposed*; the UI asks the user to confirm.
  */
-import { GoogleGenAI, type Content, type FunctionDeclaration } from "@google/genai";
+import type { FunctionDeclaration } from "@google/genai";
 import { pool, q, getSettings } from "./db";
 import { loadAll, snapshot, type Snapshot } from "./metrics";
 import { STAGES } from "./mutations";
@@ -138,17 +138,13 @@ ACTIONS
 }
 
 export async function chat(history: { role: "user" | "model"; text: string }[], asOfOverride?: string) {
-  const provider = (process.env.LLM_PROVIDER || (process.env.GROQ_API_KEY ? "groq" : process.env.MISTRAL_API_KEY ? "mistral" : "gemini")).toLowerCase();
-  if (provider in PROVIDERS) return chatCompat(PROVIDERS[provider], history, asOfOverride);
-  return chatGemini(history, asOfOverride);
+  return chatCompat(PROVIDERS.nvidia, history, asOfOverride);
 }
 
-/* ---------- OpenAI-compatible providers (Groq, OpenRouter, Mistral) ---------- */
+/* ---------- OpenAI-compatible providers (NVIDIA NIM) ---------- */
 type Provider = { name: string; url: string; keyEnv: string; keyUrl: string; modelEnv: string; fallbackEnv: string; model: string; fallbacks: string };
 const PROVIDERS: Record<string, Provider> = {
-  groq: { name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", keyEnv: "GROQ_API_KEY", keyUrl: "https://console.groq.com/keys", modelEnv: "GROQ_MODEL", fallbackEnv: "GROQ_FALLBACK_MODELS", model: "openai/gpt-oss-120b", fallbacks: "llama-3.3-70b-versatile,openai/gpt-oss-20b" },
-  openrouter: { name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", keyEnv: "OPENROUTER_API_KEY", keyUrl: "https://openrouter.ai/keys", modelEnv: "OPENROUTER_MODEL", fallbackEnv: "OPENROUTER_FALLBACK_MODELS", model: "openai/gpt-oss-120b:free", fallbacks: "meta-llama/llama-3.3-70b-instruct:free" },
-  mistral: { name: "Mistral", url: "https://api.mistral.ai/v1/chat/completions", keyEnv: "MISTRAL_API_KEY", keyUrl: "https://console.mistral.ai/api-keys", modelEnv: "MISTRAL_MODEL", fallbackEnv: "MISTRAL_FALLBACK_MODELS", model: "mistral-medium-latest", fallbacks: "mistral-small-latest" },
+  nvidia: { name: "NVIDIA", url: "https://integrate.api.nvidia.com/v1/chat/completions", keyEnv: "NVIDIA_API_KEY", keyUrl: "https://build.nvidia.com", modelEnv: "NVIDIA_MODEL", fallbackEnv: "NVIDIA_FALLBACK_MODELS", model: "nvidia/nemotron-3.5-super-vl-120b-a12b", fallbacks: "nvidia/nemotron-3.5-lightning-30b-a3b,mistralai/mistral-large-4-1t-a52b" },
 };
 type MMsg = { role: "system" | "user" | "assistant" | "tool"; content: string | null; tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[]; tool_call_id?: string; name?: string };
 async function chatCompat(P: Provider, history: { role: "user" | "model"; text: string }[], asOfOverride?: string) {
@@ -220,66 +216,6 @@ async function compatCall(P: Provider, key: string, models: string[], preferred:
     }
   }
   throw new Error(`${P.name} is busy or rate-limited right now (tried ${order.join(", ")}). Wait a few seconds and ask again. Last error: ${lastErr}`);
-}
-
-/* ---------- Gemini ---------- */
-async function chatGemini(history: { role: "user" | "model"; text: string }[], asOfOverride?: string) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not set in .env.local — add a free key from https://aistudio.google.com/apikey and restart.");
-  const ai = new GoogleGenAI({ apiKey: key });
-  // Free-tier models get busy (503) or rate-limited (429): retry, then fall back through other free Flash models
-  const models = [...new Set([process.env.GEMINI_MODEL || "gemini-3.8-flash", ...(process.env.GEMINI_FALLBACK_MODELS || "gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite").split(",").map((m) => m.trim()).filter(Boolean)])];
-  const used = { model: models[0] };
-  const asOf = asOfOverride || (await getSettings()).as_of;
-  const contents: Content[] = history.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
-  const ctx = { asOf, proposals: [] as Proposal[] };
-  const trace: { tool: string; args: unknown; ok: boolean; summary: string }[] = [];
-
-  for (let step = 0; step < 8; step++) {
-    const res = await generateWithFallback(ai, models, { contents, config: { systemInstruction: systemPrompt(asOf), tools: [{ functionDeclarations: decls }], temperature: 0.2 } }, used);
-    const calls = res.functionCalls ?? [];
-    const parts = res.candidates?.[0]?.content?.parts ?? [];
-    if (!calls.length) return { text: res.text ?? "", trace, proposals: ctx.proposals, as_of: asOf, model: used.model };
-    contents.push({ role: "model", parts });
-    const responses = [];
-    for (const c of calls) {
-      try {
-        const out = await runTool(c.name!, (c.args ?? {}) as Record<string, unknown>, ctx);
-        trace.push({ tool: c.name!, args: c.args, ok: true, summary: JSON.stringify(out).slice(0, 160) });
-        responses.push({ functionResponse: { id: c.id, name: c.name, response: { result: out } } });
-      } catch (e) {
-        trace.push({ tool: c.name!, args: c.args, ok: false, summary: (e as Error).message });
-        responses.push({ functionResponse: { id: c.id, name: c.name, response: { error: (e as Error).message } } });
-      }
-    }
-    contents.push({ role: "user", parts: responses });
-  }
-  return { text: "I hit my tool-call limit before finishing. Please narrow the question.", trace, proposals: ctx.proposals, as_of: asOf };
-}
-
-type GenArgs = Omit<Parameters<GoogleGenAI["models"]["generateContent"]>[0], "model">;
-async function generateWithFallback(ai: GoogleGenAI, models: string[], args: GenArgs, used: { model: string }) {
-  let last: unknown;
-  // Stay on the model that already answered in this conversation turn, so tool-call history stays consistent
-  const order = [used.model, ...models.filter((m) => m !== used.model)];
-  for (const model of order) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await ai.models.generateContent({ model, ...args });
-        used.model = model;
-        return res;
-      } catch (e) {
-        last = e;
-        const msg = String((e as Error).message ?? e);
-        const transient = /\b(503|429|500|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand)\b/i.test(msg);
-        const gone = /\b(404|NOT_FOUND)\b/.test(msg);
-        if (gone) break;                       // model retired for this key: try next model
-        if (!transient) throw e;               // real error (bad key, bad request): surface it
-        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-      }
-    }
-  }
-  throw new Error(`All Gemini models are busy or unavailable right now (tried ${order.join(", ")}). Free-tier capacity spikes are usually short; try again in a minute. Last error: ${String((last as Error)?.message ?? last).slice(0, 200)}`);
 }
 
 /* Models sometimes nest the payload ({create_task: {...}}, {task: {...}}) or send it as a JSON string: flatten it */
